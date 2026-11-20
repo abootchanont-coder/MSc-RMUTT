@@ -53,6 +53,12 @@
       color: #dbeafe;
       font-size: 0.95rem;
     }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
     .top-link-btn {
       display: inline-flex;
       align-items: center;
@@ -66,14 +72,62 @@
       font-size: 0.95rem;
       box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
       transition: transform 0.15s ease, background 0.15s ease;
+      border: none;
+      cursor: pointer;
+      font-family: inherit;
     }
     .top-link-btn:hover {
       background: #eff6ff;
       transform: translateY(-1px);
     }
+    .refresh-btn {
+      background: rgba(255, 255, 255, 0.16);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.35);
+    }
+    .refresh-btn:hover {
+      background: rgba(255, 255, 255, 0.28);
+    }
+    .sync-bar {
+      max-width: 1280px;
+      margin: 14px auto 0;
+      padding: 0 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 0.88rem;
+      color: var(--muted);
+    }
+    .sync-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+    }
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--success);
+      display: inline-block;
+    }
+    .dot.loading { background: var(--warning); }
+    .dot.error { background: #dc2626; }
+    .error-banner {
+      display: none;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+      padding: 12px 16px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+      font-size: 0.92rem;
+    }
     .container {
       max-width: 1280px;
-      margin: 24px auto 40px;
+      margin: 14px auto 40px;
       padding: 0 20px;
     }
     .toolbar {
@@ -322,16 +376,29 @@
   <header>
     <div class="header-inner">
       <div>
-        <h1>📊 Dashboard นักศึกษาระดับปริญญาโท คณะวิทยาศาสตร์และเทคโนโลยี RMUTT</h1>
-        <p>สรุปจำนวนนักศึกษาตามสถานะภาพ แยกตามสาขาวิชา แผนการเรียน และปีการศึกษาที่เข้ารับ</p>
+        <h1>📊 Dashboard นักศึกษาระดับปริญญาโท (กำลังศึกษาอยู่)</h1>
+        <p>เชื่อมต่อข้อมูลแบบ Real-time จาก Google Sheets แยกตามสาขาวิชา แผนการเรียน และปีการศึกษาที่เข้ารับ</p>
       </div>
-      <a class="top-link-btn" href="https://docs.google.com/spreadsheets/d/1N56IS767GC9Y5UbRPVyF-rFDWsdm9IcXirug0719jbI/edit?gid=0#gid=0" target="_blank" rel="noopener noreferrer">
-        📑 รายละเอียดข้อมูลทั้งหมด
-      </a>
+      <div class="header-actions">
+        <button type="button" class="top-link-btn refresh-btn" id="refreshBtn">🔄 ดึงข้อมูลล่าสุด</button>
+        <a class="top-link-btn" href="https://docs.google.com/spreadsheets/d/1N56IS767GC9Y5UbRPVyF-rFDWsdm9IcXirug0719jbI/edit?gid=0#gid=0" target="_blank" rel="noopener noreferrer">
+          📑 รายละเอียดข้อมูลทั้งหมด
+        </a>
+      </div>
     </div>
   </header>
 
+  <div class="sync-bar">
+    <div class="sync-status">
+      <span class="dot loading" id="syncDot"></span>
+      <span id="syncText">กำลังโหลดข้อมูลล่าสุดจาก Google Sheets...</span>
+    </div>
+    <div>ซิงก์อัตโนมัติทุก 60 วินาที</div>
+  </div>
+
   <div class="container">
+    <div class="error-banner" id="errorBanner"></div>
+
     <div class="toolbar">
       <div class="filter-controls">
         <div class="filter-group">
@@ -476,6 +543,8 @@
   </div>
 
   <script>
+    const SHEET_ID = "1N56IS767GC9Y5UbRPVyF-rFDWsdm9IcXirug0719jbI";
+
     const MAJORS = [
       "สาขาวิชาเคมีประยุกต์",
       "สาขาวิชาเทคโนโลยีชีวภาพ",
@@ -491,115 +560,173 @@
       "ยื่นขอสำเร็จการศึกษา"
     ];
 
-    const RAW_STUDENTS = [
-      // สาขาวิชาเคมีประยุกต์
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116660907002-2", name: "นายคฑาวุฒิ ระวังกาย", year: 2566, status: "ผ่านการสอบวิทยานิพนธ์", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.อมร ไชยสัตย์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116660907003-0", name: "นายวิรัฐ เหมวรรณานุกูล", year: 2567, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร. ฉัตรชัย พลเชี่ยว" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116760907001-2", name: "นางสาวฐิติรัตน์ วิจารณ์พล", year: 2567, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.ปรียาภรณ์ ไชยสัตย์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116760907002-0", name: "นายพีรภัทร โปษยาอนุวัตร์", year: 2567, status: "ผ่านการสอบวิทยานิพนธ์", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.อมร ไชยสัตย์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116760907005-3", name: "นางสุมัยดา เจ๊ะอุบง", year: 2567, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 2", advisor: "รศ. ดร.กนกอร เวชกรณ์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "126760907001-0", name: "นางสาววิรินดา ชมภู", year: 2567, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.กรวินท์วิชญ์ บุญพิสุทธินันท์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116760907003-8", name: "นางสาวพัชรพร ขาวเผือก", year: 2567, status: "ผ่านการสอบวิทยานิพนธ์", plan: "แผน 1 แบบ 2", advisor: "รศ. ดร.กนกอร เวชกรณ์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116770907001-1", name: "Mr.Liqiang ZHOU", year: 2567, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ. ดร.ศิริวรรณ ตี้ภู่" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116760907006-1", name: "นายวรัญญู สิริศาสตร์กุล", year: 2567, status: "พ้นสภาพการศึกษา", plan: "แผน 1 แบบ 2", advisor: "-" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116860907001-0", name: "นายสุวิทัศน์ รัตนนุกรม", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.อมร ไชยสัตย์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116860907002-8", name: "นางสาวเสาวณีย์ สัมพานิช", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.ปรียาภรณ์ ไชยสัตย์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116860907003-6", name: "นางสาวจิรภิญญา มณีวงศ์", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.อมร ไชยสัตย์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116860907004-4", name: "นางสาวอัญธิญา เกิดลาภ", year: 2568, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร. ฉัตรชัย พลเชี่ยว" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116860907005-1", name: "นางสาวอารยา มาทา", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.ปรียาภรณ์ ไชยสัตย์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116860907006-9", name: "นางสาวอรทัย ปี่ทอง", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "ผศ. ดร.สุภาวดี ปาทาธนานนท์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116860907007-7", name: "นางสาวปรีชญา จันวัตร์", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "ผศ. ดร.เนตรนภิส แก้วช่วย" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116870907002-7", name: "Mr.Guodong Zhang", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ. ดร.กนกอร เวชกรณ์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116960907002-6", name: "นางสาวธภาวี พุทธา", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.ปรียาภรณ์ ไชยสัตย์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116960907004-2", name: "นางสาวอัสมา หมินหมาน", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ. ดร.กนกอร เวชกรณ์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116960907006-7", name: "นายคณพด แซ่ลิ้ม", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.อมร ไชยสัตย์" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116960907008-3", name: "นางสาวปิ่นทอง ปิ่นทองพันธ์", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ. ดร.ศิริวรรณ ตี้ภู่" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116960907005-9", name: "นายรัชตะ อารมณ์สุขโข", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร. ฉัตรชัย พลเชี่ยว" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "116960907001-8", name: "นางสาวรุ้งลาวัลย์ หาลาภ", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร. ฉัตรชัย พลเชี่ยว" },
-      { major: "สาขาวิชาเคมีประยุกต์", id: "126960906001-7", name: "นางสาวธาราพร สระศรีสม", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ. ดร.กนกอร เวชกรณ์" },
+    function normalizePlan(plan) {
+      if (!plan) return "-";
+      return plan.trim();
+    }
 
-      // สาขาวิชาเทคโนโลยีชีวภาพ
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116560908001-5", name: "นางสาวศศิธร ขุนทอง", year: 2565, status: "สำเร็จการศึกษา", plan: "แผน ก 2", advisor: "รองศาสตราจารย์ ดร.อัษฎาวุธ อารีสิริสุข" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116560908002-3", name: "นางสาวชนิดา แย้มสรวล", year: 2565, status: "พ้นสภาพการศึกษา", plan: "แผน ก 2", advisor: "ดร.เจตนิพิฐ บ่อทอง" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116660908003-9", name: "นางสาวดวงแก้ว อ่ำกรด", year: 2566, status: "ผ่านการสอบวิทยานิพนธ์", plan: "แผน ก 2", advisor: "ดร.เจตนิพิฐ บ่อทอง" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116660908005-4", name: "นางสาวณัฏฐา แก้วสวาท", year: 2566, status: "ผ่านการสอบวิทยานิพนธ์", plan: "แผน ก 2", advisor: "ดร.เจตนิพิฐ บ่อทอง" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116660908006-2", name: "นางสาวแสงเดือน วัติวงษ์", year: 2566, status: "ผ่านการสอบวิทยานิพนธ์", plan: "แผน ก 2", advisor: "ผู้ช่วยศาสตราจารย์ ดร.จันทิมา ฑีฆะ" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116660908001-3", name: "นางสาวอุษาวดี ผลไม้", year: 2566, status: "สำเร็จการศึกษา", plan: "แผน ก 2", advisor: "รองศาสตราจารย์ ดร.ธนศักดิ์ ล้อมทอง" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116660908002-1", name: "นางสาวปาริชาติ เกิดประสงค์", year: 2566, status: "สำเร็จการศึกษา", plan: "แผน ก 2", advisor: "รองศาสตราจารย์ ดร.อัษฎาวุธ อารีสิริสุข" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116660908004-7", name: "นางสาวเกศินี กุหล้า", year: 2566, status: "สำเร็จการศึกษา", plan: "แผน ก 2", advisor: "รองศาสตราจารย์ ดร.วันทนีย์ เขตต์กรณ์" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "126760908002-7", name: "นางสาวศศินา สารไธสง", year: 2567, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 2", advisor: "ผู้ช่วยศาสตราจารย์ ดร.คณาภรณ์ สุจริต" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116860908003-5", name: "นางสาวชุติมา คล้ายประยูร", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 1", advisor: "รองศาสตราจารย์ ดร.วันทนีย์ เขตต์กรณ์" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116860908004-3", name: "นางสาวสุภาวดี บัวทอง", year: 2568, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 1", advisor: "รองศาสตราจารย์ ดร.ธนศักดิ์ ล้อมทอง" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116860908005-0", name: "นางสาวฐานิดา เหมชินะกุล", year: 2568, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 2", advisor: "ผู้ช่วยศาสตราจารย์ ดร.คณาภรณ์ สุจริต" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116860908006-8", name: "นายชญานนท์ ทิมย้ายงาม", year: 2568, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 2", advisor: "รองศาสตราจารย์ ดร.ธนศักดิ์ ล้อมทอง" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116960908001-7", name: "นางสาวกวินทิพย์ ทองสาร", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รองศาสตราจารย์ ดร.วันทนีย์ เขตต์กรณ์" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116960908002-5", name: "นางสาวณพีภัทร ผลานิสงค์", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รองศาสตราจารย์ ดร.อัษฎาวุธ อารีสิริสุข" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116860908001-9", name: "นางสาวอริสรา พรวันชาติ", year: 2568, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 2", advisor: "รองศาสตราจารย์ ดร.อัษฎาวุธ อารีสิริสุข" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116860908002-7", name: "นางสาวณิชาวีร์ กระจ่าง", year: 2568, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 2", advisor: "รองศาสตราจารย์ ดร.อัษฎาวุธ อารีสิริสุข" },
-      { major: "สาขาวิชาเทคโนโลยีชีวภาพ", id: "116770908001-0", name: "Ms.Chuyan Ran", year: 2567, status: "ผ่านการสอบโครงร่าง", plan: "แผน 1 แบบ 1", advisor: "รองศาสตราจารย์ ดร.อัษฎาวุธ อารีสิริสุข" },
-
-      // สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116560906003-3", name: "นายปัณณวิชญ์ วุฒิกุลธนโรจน์", year: 2565, status: "ผ่านการสอบโครงร่าง", plan: "แผน ก แบบ ก2", advisor: "รศ.ดร.นริศร์ บาลทิพย์" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116560906001-7", name: "นางสาวนุชชิตา สุขประสิทธิ์", year: 2565, status: "สำเร็จการศึกษา", plan: "แผน ก แบบ ก2", advisor: "รศ.ดร.วรนุศย์ ทองพูล" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116560906002-5", name: "นายอาทิตย์ รัตตากร", year: 2565, status: "สำเร็จการศึกษา", plan: "แผน ก แบบ ก2", advisor: "รศ.ดร.อทิพงศ์ บุตรชานนท์" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116560906004-1", name: "นางสาวศิริวรรณ โตจอ", year: 2565, status: "สำเร็จการศึกษา", plan: "แผน ก แบบ ก2", advisor: "รศ.ดร.อทิพงศ์ บุตรชานนท์" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "126560906001-5", name: "นางสาวจารุวรรณ แสงฤทธิ์", year: 2565, status: "สำเร็จการศึกษา", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.อัคคพงศ์ พันธุ์พฤกษ์" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116660906001-5", name: "นางสาวสุณิสา อิ่มทัศไนย", year: 2566, status: "ผ่านการสอบโครงร่าง", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.ปรารถนา อินต๊ะวิน" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116660906002-3", name: "นางสาวเบญจรัตน์ งานสลุง", year: 2566, status: "สำเร็จการศึกษา", plan: "แผน ก แบบ ก2", advisor: "รศ.ดร.วรนุศย์ ทองพูล" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116760906001-3", name: "นายสิทธิชัย งีสันเทียะ", year: 2567, status: "ยื่นขอสำเร็จการศึกษา", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.อัคคพงศ์ พันธุ์พฤกษ์" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116760906002-1", name: "นางสาวตวงรัตน์ ศิริเพชร", year: 2567, status: "ยื่นขอสำเร็จการศึกษา", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.อัคคพงศ์ พันธุ์พฤกษ์" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "126760906001-1", name: "นางสาวสิริชัญญา ถ้ำเพชร", year: 2567, status: "ปกติ", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.รวมพร โพธิ์ทอง" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "126760906002-9", name: "นางสาวโชติกา ชุติมาญาณภัทร", year: 2567, status: "ผ่านการสอบวิทยานิพนธ์", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.รัศมีรักษ์ หนูนุรักษ์" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116760906003-9", name: "Ms.Huali Zhao", year: 2567, status: "สำเร็จการศึกษา", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.จักรพันธ์ วัฒนวิกย์กรรม์" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116960906001-9", name: "นายณัชพล พิกุลทอง", year: 2569, status: "ปกติ", plan: "แผน ก แบบ ก2", advisor: "รศ.ดร.วรนุศย์ ทองพูล" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116960906002-7", name: "นางสาวณัฐณิชา กำแพงแก้ว", year: 2569, status: "ปกติ", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.นรรจพร เรืองไพศาล" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "116960906003-5", name: "นางสาวณัฐชา คำปลุก", year: 2569, status: "ปกติ", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.นรรจพร เรืองไพศาล" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "126860906002-7", name: "นายทศวรรษ อุติลา", year: 2568, status: "ปกติ", plan: "แผน ก แบบ ก2", advisor: "รศ.ดร.วรนุศย์ ทองพูล" },
-      { major: "สาขาวิชาเทคโนโลยีวัสดุและนวัตกรรม", id: "126860906001-9", name: "นายปธิกร อัชฌารจเรข", year: 2568, status: "ปกติ", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.รวมพร โพธิ์ทอง" },
-
-      // สาขาวิชาวิทยาการข้อมูลและสารสนเทศ
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116570905002-5", name: "นางสาวชนารรดี อารยแสง", year: 2565, status: "สำเร็จการศึกษา", plan: "แผน ข", advisor: "ผศ.ดร.อนุชา ตุงคัษฐาน" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116570905003-3", name: "นายอภิสิทธิ์ พรรณหาญ", year: 2565, status: "สำเร็จการศึกษา", plan: "แผน ข", advisor: "ผศ.ดร.อนุชา ตุงคัษฐาน" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116570905001-7", name: "นายเมธิชัย ศุขสมบัติ", year: 2565, status: "พ้นสภาพการศึกษา", plan: "-", advisor: "-" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116570905004-1", name: "นายพชิรวัสส์ กาญจนสถิตย์", year: 2565, status: "พ้นสภาพการศึกษา", plan: "-", advisor: "-" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116670905001-5", name: "นางสาวหนึ่งฤทัย นาขำ", year: 2566, status: "ปกติ", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.วิภารัตน์ บุษยาตรัส" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116770905001-3", name: "นายรัชชานนท์ เอี่ยมครอง", year: 2567, status: "ปกติ", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.วิภารัตน์ บุษยาตรัส" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "126770905001-1", name: "นายณัฐกิจ นาคพรต", year: 2567, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.วิภารัตน์ บุษยาตรัส" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116870905001-1", name: "นางสาวอรสา นาคกัน", year: 2568, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.อนุชา ตุงคัษฐาน" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116870905002-9", name: "Mr.Heng Cao", year: 2568, status: "ปกติ", plan: "แผน ก แบบ ก2", advisor: "ผศ.ดร.นิพัทธ์ จงสวัสดิ์" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116870905004-5", name: "นายพงศ์พล สุดถนอม", year: 2568, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.อนุชา ตุงคัษฐาน" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116870905003-7", name: "นางสาวสุธาวี สายทองคำ", year: 2568, status: "พ้นสภาพการศึกษา", plan: "-", advisor: "-" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116970905001-9", name: "นางสาวธิดารัตน์ โคตรพัฒน์", year: 2569, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.นิพัทธ์ จงสวัสดิ์" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116970905002-7", name: "Mrs.Dan Liu", year: 2569, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.นิพัทธ์ จงสวัสดิ์" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116970905003-5", name: "Mr.Shaohua Li", year: 2569, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.นิพัทธ์ จงสวัสดิ์" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116970905004-3", name: "Mrs.Fei Ning", year: 2569, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.นิพัทธ์ จงสวัสดิ์" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116970905006-8", name: "Mr.Yulong Wang", year: 2569, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.นิพัทธ์ จงสวัสดิ์" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116970905007-6", name: "Mr.Fan Guo", year: 2569, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.นิพัทธ์ จงสวัสดิ์" },
-      { major: "สาขาวิชาวิทยาการข้อมูลและสารสนเทศ", id: "116970905008-4", name: "Mrs.Xuexue Wang", year: 2569, status: "ปกติ", plan: "แผน ข", advisor: "ผศ.ดร.นิพัทธ์ จงสวัสดิ์" },
-
-      // สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์
-      { major: "สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์", id: "126860909001-6", name: "นายณัฐพงษ์ อุดมพรประภา", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.วิมลมาศ บำรุงเศรษฐพงษ์" },
-      { major: "สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์", id: "126860909002-4", name: "นางสาวเจนนี่ โสภา", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "ผศ.ดร.จีราวดี พุ่มเจริญ" },
-      { major: "สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์", id: "126860909004-0", name: "นางสาวอภิญญา สวัสดิ์ลคร", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.ศิรินภา อายุยืน" },
-      { major: "สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์", id: "126860909005-7", name: "นางสาวสุพากานต์ ดิฐไชยพงศ์", year: 2568, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "ผศ.ดร.กนิษฐา ยิ้มนาค" },
-      { major: "สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์", id: "116960909001-6", name: "นายเอกลักษณ์ ศรีตองอ่อน", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.อัญชลี ทองกำเหนิด" },
-      { major: "สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์", id: "116960909002-4", name: "นางสาวณัฐยาน์ บุญแย้ม", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.วิมลมาศ บำรุงเศรษฐพงษ์" },
-      { major: "สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์", id: "116960909004-0", name: "นายอดิศักดิ์ เกิดพูล", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "รศ.ดร.ศิรินภา อายุยืน" },
-      { major: "สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์", id: "126960909001-4", name: "นางสาววราพร นิโรจน์สุวรรณ", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 2", advisor: "ยังไม่มี" },
-      { major: "สาขาวิชาวิทยาการวิเคราะห์ข้อมูลประยุกต์", id: "126960909002-2", name: "นางสาวลลิตา แก้วทองแดง", year: 2569, status: "ปกติ", plan: "แผน 1 แบบ 3", advisor: "ยังไม่มี" }
-    ];
-
-    const ACTIVE_STUDENTS = RAW_STUDENTS.filter(
-      s => s.status !== "สำเร็จการศึกษา" && s.status !== "พ้นสภาพการศึกษา"
-    );
-
+    let ACTIVE_STUDENTS = [];
     const majorSelect = document.getElementById("majorSelect");
     const planSelect = document.getElementById("planSelect");
     const resetBtn = document.getElementById("resetBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
     const tabBar = document.getElementById("tabBar");
+    const syncDot = document.getElementById("syncDot");
+    const syncText = document.getElementById("syncText");
+    const errorBanner = document.getElementById("errorBanner");
 
     let statusChartInstance = null;
     let secondaryChartInstance = null;
+
+    // Robust CSV parser supporting quoted commas & multiline cells
+    function parseCSV(text) {
+      const rows = [];
+      let row = [];
+      let cell = "";
+      let inQuotes = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        const next = text[i + 1];
+        if (inQuotes) {
+          if (ch === '"' && next === '"') {
+            cell += '"';
+            i++;
+          } else if (ch === '"') {
+            inQuotes = false;
+          } else {
+            cell += ch;
+          }
+        } else {
+          if (ch === '"') {
+            inQuotes = true;
+          } else if (ch === ",") {
+            row.push(cell.trim());
+            cell = "";
+          } else if (ch === "\r" && next === "\n") {
+            row.push(cell.trim());
+            rows.push(row);
+            row = [];
+            cell = "";
+            i++;
+          } else if (ch === "\n" || ch === "\r") {
+            row.push(cell.trim());
+            rows.push(row);
+            row = [];
+            cell = "";
+          } else {
+            cell += ch;
+          }
+        }
+      }
+      if (cell.length > 0 || row.length > 0) {
+        row.push(cell.trim());
+        rows.push(row);
+      }
+      return rows;
+    }
+
+    function findColIndex(headers, keywords, excludeKeywords = []) {
+      return headers.findIndex(h => {
+        const clean = h.replace(/\s+/g, "");
+        const matched = keywords.some(k => clean.includes(k));
+        const excluded = excludeKeywords.some(k => clean.includes(k));
+        return matched && !excluded;
+      });
+    }
+
+    async function fetchSheetData(sheetName) {
+      const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}&t=${Date.now()}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`ไม่สามารถโหลดแท็บ "${sheetName}" ได้ (HTTP ${res.status})`);
+      const csvText = await res.text();
+      if (csvText.trim().startsWith("<!DOCTYPE html") || csvText.trim().startsWith("<html")) {
+        throw new Error(`ไม่สามารถอ่านข้อมูลจาก Google Sheets ได้ กรุณาตรวจสอบการตั้งค่าแชร์เป็น "ทุกคนที่มีลิงก์สามารถดูได้"`);
+      }
+      const rows = parseCSV(csvText);
+      if (rows.length < 2) return [];
+
+      // Find header row (contains รหัส or ชื่อ)
+      let headerIdx = rows.findIndex(r => r.some(c => c.includes("รหัส") || c.includes("ชื่อ")));
+      if (headerIdx === -1) headerIdx = 0;
+      const headers = rows[headerIdx];
+
+      const idxId = findColIndex(headers, ["รหัส"]);
+      const idxName = findColIndex(headers, ["ชื่อ"]);
+      const idxYear = findColIndex(headers, ["ปี"]);
+      const idxStatus = findColIndex(headers, ["สถานะ"]);
+      const idxPlan = findColIndex(headers, ["แผน"]);
+      const idxAdvisor = findColIndex(headers, ["ที่ปรึกษา"], ["ร่วม"]);
+
+      const records = [];
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        const id = idxId >= 0 ? (r[idxId] || "") : "";
+        const name = idxName >= 0 ? (r[idxName] || "") : "";
+        if (!id && !name) continue;
+
+        const yearRaw = idxYear >= 0 ? (r[idxYear] || "") : "";
+        const yearMatch = yearRaw.match(/\d{4}/);
+        const year = yearMatch ? parseInt(yearMatch[0], 10) : yearRaw;
+
+        let status = idxStatus >= 0 ? (r[idxStatus] || "").trim() : "";
+        if (!status) status = "ปกติ";
+        if (status === "สำเร็จการศึกษา" || status === "พ้นสภาพการศึกษา") continue;
+
+        const plan = idxPlan >= 0 ? (r[idxPlan] || "-") : "-";
+        const advisor = idxAdvisor >= 0 ? (r[idxAdvisor] || "-") : "-";
+
+        records.push({
+          major: sheetName,
+          id: id || "-",
+          name: name || "-",
+          year: year || "-",
+          status: status,
+          plan: plan || "-",
+          normalizedPlan: normalizePlan(plan),
+          advisor: advisor || "-"
+        });
+      }
+      return records;
+    }
+
+    async function loadAllData() {
+      syncDot.className = "dot loading";
+      syncText.textContent = "กำลังซิงก์ข้อมูลล่าสุดจาก Google Sheets...";
+      errorBanner.style.display = "none";
+
+      try {
+        const results = await Promise.all(MAJORS.map(m => fetchSheetData(m)));
+        ACTIVE_STUDENTS = results.flat();
+        populatePlanOptions();
+        render();
+
+        const now = new Date().toLocaleTimeString("th-TH", { hour12: false });
+        syncDot.className = "dot";
+        syncText.textContent = `ซิงก์ข้อมูลล่าสุดเรียบร้อย (อัปเดตเมื่อ ${now} น.)`;
+      } catch (err) {
+        syncDot.className = "dot error";
+        syncText.textContent = "โหลดข้อมูลไม่สำเร็จ";
+        errorBanner.textContent = `เกิดข้อผิดพลาด: ${err.message}`;
+        errorBanner.style.display = "block";
+      }
+    }
+
+    function populatePlanOptions() {
+      const prevPlan = planSelect.value;
+      const plans = [...new Set(ACTIVE_STUDENTS.map(s => s.normalizedPlan))].filter(p => p && p !== "-").sort();
+      planSelect.innerHTML = '<option value="ALL">ทุกแผนการเรียน</option>';
+      plans.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p;
+        opt.textContent = p;
+        planSelect.appendChild(opt);
+      });
+      if (plans.includes(prevPlan)) {
+        planSelect.value = prevPlan;
+      } else {
+        planSelect.value = "ALL";
+      }
+    }
 
     function initControls() {
       MAJORS.forEach(m => {
@@ -607,14 +734,6 @@
         opt.value = m;
         opt.textContent = m;
         majorSelect.appendChild(opt);
-      });
-
-      const plans = [...new Set(ACTIVE_STUDENTS.map(s => s.plan))].sort();
-      plans.forEach(p => {
-        const opt = document.createElement("option");
-        opt.value = p;
-        opt.textContent = p;
-        planSelect.appendChild(opt);
       });
 
       const tabItems = [
@@ -648,6 +767,8 @@
         syncTabActive("ALL");
         render();
       });
+
+      refreshBtn.addEventListener("click", () => loadAllData());
     }
 
     function syncTabActive(val) {
@@ -754,7 +875,7 @@
 
       const subset = ACTIVE_STUDENTS.filter(s => {
         const matchMajor = selectedMajor === "ALL" || s.major === selectedMajor;
-        const matchPlan = selectedPlan === "ALL" || s.plan === selectedPlan;
+        const matchPlan = selectedPlan === "ALL" || s.normalizedPlan === selectedPlan;
         return matchMajor && matchPlan;
       });
 
@@ -770,7 +891,6 @@
         selectedPlan === "ALL" ? "ทุกแผนการเรียน" : `แผน: ${selectedPlan}`
       ].join(" • ");
 
-      // KPIs
       document.getElementById("kpiGrid").innerHTML = `
         <div class="kpi-card green">
           <div class="kpi-title">กำลังศึกษาอยู่ทั้งหมด</div>
@@ -794,7 +914,6 @@
         </div>
       `;
 
-      // Status table
       document.getElementById("statusNote").textContent = scopeLabel;
       document.getElementById("statusChartNote").textContent = scopeLabel;
       document.getElementById("statusTableBody").innerHTML = STATUS_ORDER.map(st => {
@@ -818,7 +937,6 @@
         </tr>
       `;
 
-      // Year table
       const yearMap = {};
       subset.forEach(s => {
         yearMap[s.year] = (yearMap[s.year] || 0) + 1;
@@ -842,11 +960,10 @@
         </tr>
       `;
 
-      // Major comparison table (visible on ALL view)
       const compPanel = document.getElementById("majorComparisonPanel");
       compPanel.style.display = selectedMajor === "ALL" ? "block" : "none";
       if (selectedMajor === "ALL") {
-        let sumNorm = 0, sumProp = 0, sumDef = 0, sumSub = 0, sumAll = 0;
+        let sum1 = 0, sum2 = 0, sum3 = 0, sum4 = 0, sumAll = 0;
         document.getElementById("majorSummaryBody").innerHTML = MAJORS.map(m => {
           const rows = subset.filter(s => s.major === m);
           const norm = rows.filter(r => r.status === "ปกติ").length;
@@ -854,7 +971,7 @@
           const def = rows.filter(r => r.status === "ผ่านการสอบวิทยานิพนธ์").length;
           const sub = rows.filter(r => r.status === "ยื่นขอสำเร็จการศึกษา").length;
           const all = rows.length;
-          sumNorm += norm; sumProp += prop; sumDef += def; sumSub += sub; sumAll += all;
+          sum1 += norm; sum2 += prop; sum3 += def; sum4 += sub; sumAll += all;
           return `
             <tr>
               <td><strong>${m}</strong></td>
@@ -868,16 +985,15 @@
         }).join("") + `
           <tr class="total-row">
             <td>รวมทุกสาขา</td>
-            <td class="num">${sumNorm}</td>
-            <td class="num">${sumProp}</td>
-            <td class="num">${sumDef}</td>
-            <td class="num">${sumSub}</td>
+            <td class="num">${sum1}</td>
+            <td class="num">${sum2}</td>
+            <td class="num">${sum3}</td>
+            <td class="num">${sum4}</td>
             <td class="num">${sumAll}</td>
           </tr>
         `;
       }
 
-      // Student list
       document.getElementById("studentCountNote").textContent = `แสดง ${total} คน (${scopeLabel})`;
       document.getElementById("studentListBody").innerHTML = subset.length
         ? subset.map((s, idx) => `
@@ -898,7 +1014,8 @@
     }
 
     initControls();
-    render();
+    loadAllData();
+    setInterval(loadAllData, 60000);
   </script>
 </body>
 </html>
